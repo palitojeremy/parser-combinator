@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE LambdaCase    #-}
-{-# LANGUAGE TupleSections #-}
 
 import           Control.Applicative (liftA2)
 import           Data.Char
@@ -33,15 +32,15 @@ instance Show ParseError where
   show (ParseError e f) = printf "expected %s but found %s" e f
 
 instance Applicative Parser where
-  pure c = Parser (, Right c)
+  pure c = Parser $ \s -> (s, Right c)
   pf <*> pa = Parser $ \s -> case runParser pf s of
     (s', Right f) -> fmap f <$> runParser pa s'
-    (s', Left  r) -> (s', Left r)
+    (s', Left  e) -> (s', Left e)
 
 instance Monad Parser where
   pa >>= f = Parser $ \s -> case runParser pa s of
     (s', Right a) -> runParser (f a) s'
-    (s', Left  r) -> (s', Left r)
+    (s', Left  e) -> (s', Left e)
 
 
 
@@ -60,12 +59,12 @@ any = Parser $ \case
   (x:xs) -> (xs, Right x)
 
 eof :: Parser ()
-eof = Parser $ \s -> case s of
-  []    -> ("", Right ())
-  (c:_) -> (s, Left $ ParseError "the end of the input" [c])
+eof = Parser $ \case
+  []      -> ("", Right ())
+  s@(c:_) -> (s, Left $ ParseError "the end of the input" [c])
 
 parseError :: String -> String -> Parser a
-parseError expected found = Parser (, Left $ ParseError expected found)
+parseError expected found = Parser $ \s -> (s, Left $ ParseError expected found)
 
 satisfy :: String -> (Char -> Bool) -> Parser Char
 satisfy description predicate = try $ do
@@ -98,12 +97,9 @@ choice description = foldr (<|>) noMatch
 
 -- characters
 
-char c = satisfy [c] (== c)
+char c = satisfy [c]     (== c)
 space  = satisfy "space" isSpace
 digit  = satisfy "digit" isDigit
-
-string :: String -> Parser String
-string = traverse char
 
 
 
@@ -121,6 +117,7 @@ sepBy1 p s = liftA2 (:) p $ many (s >> p)
 
 -- syntax
 
+string = traverse char
 spaces = many space
 symbol s = string s <* spaces
 
@@ -149,40 +146,45 @@ instance Show JValue where
     JObject o -> printf "{%s}" $ intercalate ", " [printf "%s: %s" (show k) (show v) | (k,v) <- M.toList o]
 
 
-json = spaces >> jValue
-jValue = choice "a JSON value"
-  [ JObject <$> jObject
-  , JArray  <$> jArray
-  , JString <$> jString
-  , JNumber <$> jNumber
-  , JBool   <$> jBool
+json = spaces >> jsonValue
+jsonValue = choice "a JSON value"
+  [ JObject <$> jsonObject
+  , JArray  <$> jsonArray
+  , JString <$> jsonString
+  , JNumber <$> jsonNumber
+  , JBool   <$> jsonBool
   , JNull   <$  symbol "null"
   ]
 
-jObject =
-  fmap M.fromList $ braces $ jEntry `sepBy` symbol ","
-  where jEntry = do
-          k <- jString
-          symbol ":"
-          v <- jValue
-          pure (k,v)
+jsonObject = do
+  assocList <- braces $ jsonEntry `sepBy` symbol ","
+  return $ M.fromList assocList
+  where
+    jsonEntry = do
+      k <- jsonString
+      symbol ":"
+      v <- jsonValue
+      return (k,v)
 
-jArray = brackets $ jValue `sepBy` symbol ","
+jsonArray = brackets $ jsonValue `sepBy` symbol ","
 
-jString = between (char '"') (char '"') (many jChar) <* spaces
-  where jChar = choice "JSON string character"
-          [ try $ '\n' <$ string "\\n"  -- escaped newline
-          , try $ '\t' <$ string "\\t"  -- escaped tab
-          , try $ '"'  <$ string "\\\"" -- escaped quote
-          , try $ '\\' <$ string "\\\\" -- escaped backslash
-          , satisfy "not a quote" (/= '"')
-          ]
+jsonString =
+  between (char '"') (char '"') (many jsonChar) <* spaces
+  where
+    jsonChar = choice "JSON string character"
+      [ try $ '\n' <$ string "\\n"
+      , try $ '\t' <$ string "\\t"
+      , try $ '"'  <$ string "\\\""
+      , try $ '\\' <$ string "\\\\"
+      , satisfy "not a quote" (/= '"')
+      ]
 
-jNumber = read <$> many1 digit
+jsonNumber = read <$> many1 digit
 
-jBool = jTrue <|> jFalse
-  where jTrue  = True  <$ symbol "true"
-        jFalse = False <$ symbol "false"
+jsonBool = choice "JSON boolean"
+  [ True  <$ symbol "true"
+  , False <$ symbol "false"
+  ]
 
 
 
