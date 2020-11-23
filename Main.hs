@@ -4,10 +4,10 @@
 
 import           Control.Applicative (liftA2)
 import           Data.Char
+import           Data.Foldable       (for_)
 import           Data.Functor
 import qualified Data.HashMap.Strict as M
 import           Data.List           (intercalate)
-import           Data.Traversable    (for)
 import           Prelude             hiding (any)
 import           System.Environment
 import           Text.Printf
@@ -191,7 +191,7 @@ jBool = jTrue <|> jFalse
 main :: IO ()
 main = do
   args <- getArgs
-  for args $ \filename -> do
+  for_ args $ \filename -> do
     content <- readFile filename
     putStrLn content
     print $ run json content
