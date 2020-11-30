@@ -25,7 +25,6 @@ newtype Parser a = Parser { runParser :: String -> (String, Either ParseError a)
 
 
 
-
 -- instances
 
 instance Show ParseError where
@@ -95,14 +94,6 @@ choice description = foldr (<|>) noMatch
 
 
 
--- characters
-
-char c = satisfy [c]     (== c)
-space  = satisfy "space" isSpace
-digit  = satisfy "digit" isDigit
-
-
-
 -- repetition
 
 many, many1 :: Parser a -> Parser [a]
@@ -112,6 +103,14 @@ many1 p = liftA2 (:) p $ many p
 sepBy, sepBy1 :: Parser a -> Parser s -> Parser [a]
 sepBy  p s = sepBy1 p s <|> pure []
 sepBy1 p s = liftA2 (:) p $ many (s >> p)
+
+
+
+-- characters
+
+char c = satisfy [c]     (== c)
+space  = satisfy "space" isSpace
+digit  = satisfy "digit" isDigit
 
 
 
